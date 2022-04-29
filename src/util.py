@@ -209,6 +209,8 @@ def synthesize(tree1, tree2):
 
     expr2 = dig_holes(expr2, plain_vars)
 
+    print(expr2)
+
     # Formulate the constraint for Z3.
     goal = z3.ForAll(
         list(plain_vars.values()),  # For every valuation of variables...

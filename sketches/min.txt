@@ -1,2 +1,2 @@
 (x < y) ? x : y
-hh1 ^ ((hh2 ^ hh3) & !(hh4 < hh5))
+hh1 ^ ((hh2 ^ hh3) & - (hh4 < hh5))
