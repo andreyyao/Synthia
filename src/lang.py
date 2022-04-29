@@ -3,12 +3,22 @@ import lark
 
 
 GRAMMAR = """
-?start: sum
+?start: cond
+
+?cond:
+  | "true"              -> true
+  | "false"             -> false
+  | sum "==" sum        -> eq
+  | sum ">" sum         -> gt
+  | cond "||" cond      -> or
+  | cond "&&" cond      -> and
+  | "!" cond            -> not
 
 ?sum: term
-  | sum "?" sum ":" sum -> if
-  | sum "+" term        -> add
-  | sum "-" term        -> sub
+  | cond "?" sum ":" sum -> if
+  | cond                 -> ofbool
+  | sum "+" term         -> add
+  | sum "-" term         -> sub
 
 ?term: item
   | term "*"  item      -> mul
@@ -58,3 +68,7 @@ def interp(tree, lookup):
         true = interp(tree.children[1], lookup)
         false = interp(tree.children[2], lookup)
         return (cond != 0) * true + (cond == 0) * false
+    elif op == 'true':
+        return z3.BoolVal(True)
+    elif op == 'false':
+        return z3.BoolVal(False)
