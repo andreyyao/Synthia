@@ -1,0 +1,2 @@
+x * x + y * y + z * z + 2 * x * y + 2 * y * z + 2 * x * z
+(hh1 + hh2 + hh3) * (hh3 + hh1 + hh2)

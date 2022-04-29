@@ -3,13 +3,15 @@ import lark
 
 
 GRAMMAR = """
-?start: cond
+?start: connect
+
+?connect: cond
+  | connect "||" cond      -> or
+  | connect "&&" cond      -> and
 
 ?cond: sum
   | sum "==" sum        -> eq
   | sum ">" sum         -> gt
-  | cond "||" cond      -> or
-  | cond "&&" cond      -> and
   | "!" cond            -> not
 
 ?sum: term

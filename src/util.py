@@ -51,7 +51,7 @@ def pretty(tree, subst={}, paren=False):
         cond = pretty(tree.children[0], subst)
         true = pretty(tree.children[1], subst)
         false = pretty(tree.children[2], subst)
-        return par('{} ? {} : {}'.format(cond, true, false))
+        return pars('{} ? {} : {}'.format(cond, true, false))
 
 
 def run(tree, env):
@@ -66,7 +66,7 @@ def z3_expr(tree, vars=None):
     """Create a Z3 expression from a tree.
     Return the Z3 expression and a dict mapping variable names to all
     free variables occurring in the expression. All variables are
-    represented as BitVecs of width 8. Optionally, `vars` can be an
+    represented as BitVecs of width BITWIDTH. Optionally, `vars` can be an
     initial set of variables.
     """
 
