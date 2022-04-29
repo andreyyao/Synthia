@@ -13,7 +13,7 @@ GRAMMAR = """
   | "!" cond            -> not
 
 ?sum: term
-  | sum "?" sum ":" sum -> if
+  | cond "?" sum ":" sum -> if
   | sum "+" term         -> add
   | sum "-" term         -> sub
 
@@ -55,13 +55,13 @@ def interp(tree, lookup):
         elif op == 'shr':
             return lhs >> rhs
         elif op == 'eq':
-            return lhs == rhs
+            return z3.If(lhs == rhs, 1, 0)
         elif op == 'gt':
-            return (lhs > rhs) == 1
+            return z3.If((lhs > rhs), 1, 0)
         elif op == 'or':
-            return lhs | rhs
+            return z3.If(lhs != 0, 1, z3.If(rhs != 0, 1, 0))
         elif op == 'and':
-            return lhs & rhs
+            return z3.If(lhs != 0, z3.If(rhs != 0, 1, 0), 0)
     elif op == 'neg':
         sub = interp(tree.children[0], lookup)
         return -sub
@@ -76,4 +76,4 @@ def interp(tree, lookup):
         return (cond != 0) * true + (cond == 0) * false
     elif op == 'not':
         child = interp(tree.children[0], lookup)
-        return (child == 0)
+        return z3.If(child == 0, 1, 0)

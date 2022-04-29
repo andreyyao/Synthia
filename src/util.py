@@ -1,6 +1,6 @@
 import lang
 import z3
-
+import sys
 
 def pretty(tree, subst={}, paren=False):
     """Pretty-print a tree, with optional substitutions applied.
@@ -17,7 +17,7 @@ def pretty(tree, subst={}, paren=False):
             return s
 
     op = tree.data
-    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr'):
+    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'eq', 'gt', 'and', 'or'):
         lhs = pretty(tree.children[0], subst, True)
         rhs = pretty(tree.children[1], subst, True)
         c = {
@@ -27,11 +27,18 @@ def pretty(tree, subst={}, paren=False):
             'div': '/',
             'shl': '<<',
             'shr': '>>',
+            'eq' : '==',
+            'gt' : '>',
+            'and': '&&',
+            'or' : '||'
         }[op]
         return par('{} {} {}'.format(lhs, c, rhs))
     elif op == 'neg':
         sub = pretty(tree.children[0], subst)
         return '-{}'.format(sub, True)
+    elif op == 'not':
+        child = pretty(tree.children[1], subst)
+        return '!{}'.format(child, True)
     elif op == 'num':
         return tree.children[0]
     elif op == 'var':
@@ -49,7 +56,7 @@ def run(tree, env):
     `env` is a mapping from variable names to values.
     """
 
-    return interp(tree, lambda n: env[n])
+    return lang.interp(tree, lambda n: env[n])
 
 
 def z3_expr(tree, vars=None):
@@ -71,7 +78,7 @@ def z3_expr(tree, vars=None):
             vars[name] = v
             return v
 
-    return interp(tree, get_var), vars
+    return lang.interp(tree, get_var), vars
 
 
 def solve(phi):
@@ -116,3 +123,20 @@ def synthesize(tree1, tree2):
 
     # Solve the constraint.
     return solve(goal)
+
+
+
+
+def ex2(source):
+    src1, src2 = source.strip().split('\n')
+
+    parser = lang.parser# lark.Lark(lang.GRAMMAR)
+    tree1 = parser.parse(src1)
+    tree2 = parser.parse(src2)
+
+    model = synthesize(tree1, tree2)
+    print(pretty(tree1))
+    print(pretty(tree2, model_values(model)))
+
+if __name__ == '__main__':
+    ex2(sys.stdin.read())
