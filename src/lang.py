@@ -17,7 +17,6 @@ GRAMMAR = """
   | cond "==" sum        -> eq
   | cond "<" sum         -> lt
   | cond ">" sum         -> gt
-  | "~" cond             -> not
 
 ?sum: term
   | cond "?" sum ":" sum -> if
@@ -33,6 +32,8 @@ GRAMMAR = """
 ?item: NUMBER           -> num
   | "-" item            -> neg
   | CNAME               -> var
+  | "~" item            -> bnot
+  | "!" item            -> lnot
   | "(" start ")"
 
 %import common.NUMBER
@@ -94,6 +95,10 @@ def interp(tree, lookup):
         true = interp(tree.children[1], lookup)
         false = interp(tree.children[2], lookup)
         return z3.If(cond != bitvec0(), true, false)
-    elif op == 'not':
+    elif op == 'bnot': # bitwise not
         child = interp(tree.children[0], lookup)
         return ~ child
+    elif op == 'lnot': # logical not
+        child = interp(tree.children[0], lookup)
+        return z3.If(child == bitvec0(), bitvec1(), bitvec0())
+    

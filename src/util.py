@@ -41,7 +41,10 @@ def pretty(tree, subst={}, paren=True):
     elif op == 'neg':
         sub = pretty(tree.children[0], subst)
         return '-{}'.format(sub, True)
-    elif op == 'not':
+    elif op == 'lnot':
+        child = pretty(tree.children[0], subst)
+        return '!{}'.format(child, True)
+    elif op == 'bnot':
         child = pretty(tree.children[0], subst)
         return '~{}'.format(child, True)
     elif op == 'num':
@@ -104,7 +107,7 @@ def expand(hole, plain_vars):
         expr = z3.BitVec(name + "#$num", BITWIDTH)
         for v in plain_vars:
             cond = z3.BitVec(name + "#" + v, BITWIDTH)
-            expr = z3.If(cond != lang.bitvec0(),
+            expr = z3.If(z3.Distinct(cond, lang.bitvec0()),
                          expr, z3.BitVec(v, BITWIDTH))
         return expr
     else:
@@ -129,7 +132,7 @@ def fill_holes(tree, model):
     def fold_cond(t):
         decl = t.decl()
         if (decl.kind() == z3.Z3_OP_UNINTERPRETED
-            and decl.name().endswith("$val")):
+            and decl.name().endswith("$num")):
             return model_vals[decl.name()]
         elif decl.kind() == z3.Z3_OP_ITE:
             cond = t.children()[0]
@@ -156,6 +159,7 @@ def fill_holes(tree, model):
 
     def helper(t):
         if t.decl().kind() == z3.Z3_OP_ITE:
+            print(t)
             cond = t.children()[0]
             false = t.children()[2]
             if (false.decl().kind() == z3.Z3_OP_UNINTERPRETED
@@ -204,8 +208,6 @@ def synthesize(tree1, tree2):
                   if not k.startswith('h')}
 
     expr2 = dig_holes(expr2, plain_vars)
-
-    print(expr2)
 
     # Formulate the constraint for Z3.
     goal = z3.ForAll(
