@@ -74,7 +74,7 @@ def z3_expr(tree, vars=None):
         if name in vars:
             return vars[name]
         else:
-            v = z3.BitVec(name, 8)
+            v = z3.BitVec(name, 12)
             vars[name] = v
             return v
 
