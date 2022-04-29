@@ -1,18 +1,23 @@
 import z3
 import lark
+from z3.z3 import BitVec, BitVecVal, Const, ZeroExt
 
+BITWIDTH = 16
 
 GRAMMAR = """
 ?start: connect
 
 ?connect: cond
-  | connect "||" cond      -> or
-  | connect "&&" cond      -> and
+  | connect "|" cond      -> or
+  | connect "^" cond      -> xor
+  | connect "&" cond      -> and
 
 ?cond: sum
-  | sum "==" sum        -> eq
-  | sum ">" sum         -> gt
-  | "!" cond            -> not
+  | cond "!=" sum        -> ne
+  | cond "==" sum        -> eq
+  | cond "<" sum         -> lt
+  | cond ">" sum         -> gt
+  | "~" cond             -> not
 
 ?sum: term
   | cond "?" sum ":" sum -> if
@@ -22,7 +27,6 @@ GRAMMAR = """
 
 ?term: item
   | term "*"  item      -> mul
-  | term "/"  item      -> div
   | term ">>" item      -> shr
   | term "<<" item      -> shl
 
@@ -39,9 +43,19 @@ GRAMMAR = """
 
 parser = lark.Lark(GRAMMAR)
 
+
+def bitvec0():
+    return BitVecVal(0, BITWIDTH)
+
+
+def bitvec1():
+    return BitVecVal(1, BITWIDTH)
+
+
 def interp(tree, lookup):
     op = tree.data
-    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'eq', 'gt', 'or', 'and'):
+    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr',
+              'eq', 'ne', 'gt', 'lt', 'or', 'xor', 'and'):
         lhs = interp(tree.children[0], lookup)
         rhs = interp(tree.children[1], lookup)
         if op == 'add':
@@ -50,32 +64,36 @@ def interp(tree, lookup):
             return lhs - rhs
         elif op == 'mul':
             return lhs * rhs
-        elif op == 'div':
-            return lhs / rhs
         elif op == 'shl':
             return lhs << rhs
         elif op == 'shr':
             return lhs >> rhs
         elif op == 'eq':
-            return z3.If(lhs == rhs, 1, 0)
+            return z3.If(lhs == rhs, bitvec1(), bitvec0())
+        elif op == 'ne':
+            return z3.If(lhs != rhs, bitvec1(), bitvec0())
         elif op == 'gt':
-            return z3.If((lhs > rhs), 1, 0)
+            return z3.If(lhs > rhs, bitvec1(), bitvec0())
+        elif op == 'lt':
+            return z3.If(lhs < rhs, bitvec1(), bitvec0())
         elif op == 'or':
-            return z3.If(lhs != 0, 1, z3.If(rhs != 0, 1, 0))
+            return lhs | rhs
+        elif op == 'xor':
+            return lhs ^ rhs
         elif op == 'and':
-            return z3.If(lhs != 0, z3.If(rhs != 0, 1, 0), 0)
+            return lhs & rhs
     elif op == 'neg':
-        sub = interp(tree.children[0], lookup)
-        return -sub
+        child = interp(tree.children[0], lookup)
+        return - child
     elif op == 'num':
-        return int(tree.children[0])
+        return z3.BitVecVal(int(tree.children[0]), BITWIDTH)
     elif op == 'var':
         return lookup(tree.children[0])
     elif op == 'if':
         cond = interp(tree.children[0], lookup)
         true = interp(tree.children[1], lookup)
         false = interp(tree.children[2], lookup)
-        return (cond != 0) * true + (cond == 0) * false
+        return z3.If(cond != bitvec0(), true, false)
     elif op == 'not':
         child = interp(tree.children[0], lookup)
-        return z3.If(child == 0, 1, 0)
+        return ~ child

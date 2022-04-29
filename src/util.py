@@ -2,11 +2,9 @@ import lang
 import z3
 import sys
 
+BITWIDTH = lang.BITWIDTH
 
-BITWIDTH = 16
-
-
-def pretty(tree, subst={}, paren=False):
+def pretty(tree, subst={}, paren=True):
     """Pretty-print a tree, with optional substitutions applied.
     If `paren` is true, then loose-binding expressions are
     parenthesized. We simplify boolean expressions "on the fly."
@@ -20,7 +18,8 @@ def pretty(tree, subst={}, paren=False):
             return s
 
     op = tree.data
-    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'eq', 'gt', 'and', 'or'):
+    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr',
+              'eq', 'ne', 'gt', 'lt', 'and', 'xor', 'or'):
         lhs = pretty(tree.children[0], subst, True)
         rhs = pretty(tree.children[1], subst, True)
         c = {
@@ -31,17 +30,20 @@ def pretty(tree, subst={}, paren=False):
             'shl': '<<',
             'shr': '>>',
             'eq' : '==',
+            'ne' : '!=',
+            'lt' : '<',
             'gt' : '>',
-            'and': '&&',
-            'or' : '||'
+            'and': '&',
+            'xor': '^',
+            'or' : '|'
         }[op]
         return pars('{} {} {}'.format(lhs, c, rhs))
     elif op == 'neg':
         sub = pretty(tree.children[0], subst)
         return '-{}'.format(sub, True)
     elif op == 'not':
-        child = pretty(tree.children[1], subst)
-        return '!{}'.format(child, True)
+        child = pretty(tree.children[0], subst)
+        return '~{}'.format(child, True)
     elif op == 'num':
         return tree.children[0]
     elif op == 'var':
@@ -99,10 +101,11 @@ def expand(hole, plain_vars):
     """
     name = hole.decl().name()
     if name.startswith("hh"):
-        expr = z3.BitVec(name + "#@val", BITWIDTH)
+        expr = z3.BitVec(name + "#$num", BITWIDTH)
         for v in plain_vars:
             cond = z3.BitVec(name + "#" + v, BITWIDTH)
-            expr = z3.If(cond != 0, expr, z3.BitVec(v, BITWIDTH))
+            expr = z3.If(cond != lang.bitvec0(),
+                         expr, z3.BitVec(v, BITWIDTH))
         return expr
     else:
         return hole
@@ -119,17 +122,15 @@ def dig_holes(tree, plain_vars):
 
     
 def fill_holes(tree, model):
-    """ Fills digged holes back in
-    returns new model_values """
+    """ Fills digged holes back in and returns new model_values """
     model_vals = model_values(model)
 
-    # recursive helper
+    # recursive constant folding from root of hole tree
     def fold_cond(t):
         decl = t.decl()
         if (decl.kind() == z3.Z3_OP_UNINTERPRETED
-            and decl.name().startswith("hh")):
+            and decl.name().endswith("$val")):
             return model_vals[decl.name()]
-        # if then else
         elif decl.kind() == z3.Z3_OP_ITE:
             cond = t.children()[0]
             if cond.decl().kind() == z3.Z3_OP_DISTINCT:
@@ -139,7 +140,7 @@ def fill_holes(tree, model):
                     if model_vals[lhs.decl().name()].as_long() != 0:
                         return fold_cond(t.children()[1])
                     else:
-                        return fold_cond(t.children()[2])
+                        return t.children()[2]
                 else:
                     return t
             else:
@@ -149,11 +150,19 @@ def fill_holes(tree, model):
         
     new_model_vals = { }
 
+    for key in model_vals:
+        if key.startswith("h") and not key.startswith("hh"):
+            new_model_vals[key] = model_vals[key]
+
     def helper(t):
         if t.decl().kind() == z3.Z3_OP_ITE:
+            cond = t.children()[0]
             false = t.children()[2]
-            if false.decl().kind() == z3.Z3_OP_UNINTERPRETED:
-                hole = t.children()[0].children()[0]
+            if (false.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                and cond.children()[0].decl().name().startswith("hh")):
+                # t is now Root of the manufactured hole tree
+                # Start constant folding
+                hole = cond.children()[0]
                 key = hole.decl().name()[:hole.decl().name().index("#")]
                 new_val = fold_cond(t)
                 new_model_vals[key] = new_val
@@ -165,9 +174,6 @@ def fill_holes(tree, model):
                 helper(child)
 
     helper(tree)
-    for key in model_vals:
-        if key.startswith("h") and not key.startswith("hh"):
-            new_model_vals[key] = model_vals[key]
     return new_model_vals
         
 
@@ -199,6 +205,8 @@ def synthesize(tree1, tree2):
 
     expr2 = dig_holes(expr2, plain_vars)
 
+    print(expr2)
+
     # Formulate the constraint for Z3.
     goal = z3.ForAll(
         list(plain_vars.values()),  # For every valuation of variables...
@@ -207,6 +215,7 @@ def synthesize(tree1, tree2):
 
     # Solve the constraint.
     model = solve(goal)
+    print(model)
     model_vals = fill_holes(expr2, model)
     return model_vals
 
