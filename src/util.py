@@ -2,6 +2,10 @@ import lang
 import z3
 import sys
 
+
+BITWIDTH = 16
+
+
 def pretty(tree, subst={}, paren=False):
     """Pretty-print a tree, with optional substitutions applied.
     If `paren` is true, then loose-binding expressions are
@@ -57,7 +61,7 @@ def run(tree, env):
     """
 
     return lang.interp(tree, lambda n: env[n])
-
+    
 
 def z3_expr(tree, vars=None):
     """Create a Z3 expression from a tree.
@@ -74,13 +78,45 @@ def z3_expr(tree, vars=None):
         if name in vars:
             return vars[name]
         else:
-            v = z3.BitVec(name, 12)
+            v = z3.BitVec(name, BITWIDTH)
             vars[name] = v
             return v
 
     return lang.interp(tree, get_var), vars
 
 
+def expand(hole, plain_vars):
+    """ Expands a single hole to switches among {v1, ..., vn, h}
+    where v1,...,vn are all the bound variables.
+    """
+    name = hole.decl().name()
+    if name.startswith("hh"):
+        expr = z3.BitVec(name + "#@val", BITWIDTH)
+        for v in plain_vars:
+            cond = z3.BitVec(name + "#" + v, BITWIDTH)
+            expr = z3.If(cond != 0, expr, z3.BitVec(v, BITWIDTH))
+        return expr
+    else:
+        return hole
+
+    
+def dig_holes(tree, plain_vars):
+    """ Replaces each hole in tree with conditional switches
+    between bound variables and constants"""
+    if tree.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+        return expand(tree, plain_vars)
+    else:
+        substs = [(c, dig_holes(c, plain_vars)) for c in tree.children()]
+        return z3.substitute(tree, substs)
+
+# def fold_cond(tree):
+#     """ Fills holes back in if the condition is  """
+#     if tree.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+#         return expand(tree, plain_vars)
+#     else:
+        
+
+    
 def solve(phi):
     """Solve a Z3 expression, returning the model.
     """
@@ -115,6 +151,9 @@ def synthesize(tree1, tree2):
     plain_vars = {k: v for k, v in vars1.items()
                   if not k.startswith('h')}
 
+    expr2 = dig_holes(expr2, plain_vars)
+
+    print(expr2)
     # Formulate the constraint for Z3.
     goal = z3.ForAll(
         list(plain_vars.values()),  # For every valuation of variables...
@@ -126,8 +165,7 @@ def synthesize(tree1, tree2):
 
 
 
-
-def ex2(source):
+def process(source):
     src1, src2 = source.strip().split('\n')
 
     parser = lang.parser# lark.Lark(lang.GRAMMAR)
@@ -137,6 +175,8 @@ def ex2(source):
     model = synthesize(tree1, tree2)
     print(pretty(tree1))
     print(pretty(tree2, model_values(model)))
+    print(model)
 
+    
 if __name__ == '__main__':
-    ex2(sys.stdin.read())
+    process(sys.stdin.read())
