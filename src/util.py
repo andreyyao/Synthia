@@ -13,11 +13,10 @@ def pretty(tree, subst={}, paren=False):
     """
 
     # Add parentheses?
-    if paren:
-        def par(s):
+    def pars(s):
+        if paren:
             return '({})'.format(s)
-    else:
-        def par(s):
+        else:
             return s
 
     op = tree.data
@@ -36,7 +35,7 @@ def pretty(tree, subst={}, paren=False):
             'and': '&&',
             'or' : '||'
         }[op]
-        return par('{} {} {}'.format(lhs, c, rhs))
+        return pars('{} {} {}'.format(lhs, c, rhs))
     elif op == 'neg':
         sub = pretty(tree.children[0], subst)
         return '-{}'.format(sub, True)
@@ -85,6 +84,15 @@ def z3_expr(tree, vars=None):
     return lang.interp(tree, get_var), vars
 
 
+def model_values(model):
+    """Get the values out of a Z3 model.
+    """
+    return {
+        d.name(): model[d]
+        for d in model.decls()
+    }
+
+
 def expand(hole, plain_vars):
     """ Expands a single hole to switches among {v1, ..., vn, h}
     where v1,...,vn are all the bound variables.
@@ -99,7 +107,7 @@ def expand(hole, plain_vars):
     else:
         return hole
 
-    
+
 def dig_holes(tree, plain_vars):
     """ Replaces each hole in tree with conditional switches
     between bound variables and constants"""
@@ -109,11 +117,58 @@ def dig_holes(tree, plain_vars):
         substs = [(c, dig_holes(c, plain_vars)) for c in tree.children()]
         return z3.substitute(tree, substs)
 
-# def fold_cond(tree):
-#     """ Fills holes back in if the condition is  """
-#     if tree.decl().kind() == z3.Z3_OP_UNINTERPRETED:
-#         return expand(tree, plain_vars)
-#     else:
+    
+def fill_holes(tree, model):
+    """ Fills digged holes back in
+    returns new model_values """
+    model_vals = model_values(model)
+
+    # recursive helper
+    def fold_cond(t):
+        decl = t.decl()
+        if (decl.kind() == z3.Z3_OP_UNINTERPRETED
+            and decl.name().startswith("hh")):
+            return model_vals[decl.name()]
+        # if then else
+        elif decl.kind() == z3.Z3_OP_ITE:
+            cond = t.children()[0]
+            if cond.decl().kind() == z3.Z3_OP_DISTINCT:
+                lhs = cond.children()[0]
+                if (lhs.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                    and lhs.decl().name().startswith("hh")):
+                    if model_vals[lhs.decl().name()].as_long() != 0:
+                        return fold_cond(t.children()[1])
+                    else:
+                        return fold_cond(t.children()[2])
+                else:
+                    return t
+            else:
+                return t
+        else:
+            return t
+        
+    new_model_vals = { }
+
+    def helper(t):
+        if t.decl().kind() == z3.Z3_OP_ITE:
+            false = t.children()[2]
+            if false.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+                hole = t.children()[0].children()[0]
+                key = hole.decl().name()[:hole.decl().name().index("#")]
+                new_val = fold_cond(t)
+                new_model_vals[key] = new_val
+            else:
+                for child in t.children():
+                    helper(child)
+        else:
+            for child in t.children():
+                helper(child)
+
+    helper(tree)
+    for key in model_vals:
+        if key.startswith("h") and not key.startswith("hh"):
+            new_model_vals[key] = model_vals[key]
+    return new_model_vals
         
 
     
@@ -125,15 +180,6 @@ def solve(phi):
     s.add(phi)
     s.check()
     return s.model()
-
-
-def model_values(model):
-    """Get the values out of a Z3 model.
-    """
-    return {
-        d.name(): model[d]
-        for d in model.decls()
-    }
 
 
 def synthesize(tree1, tree2):
@@ -153,7 +199,6 @@ def synthesize(tree1, tree2):
 
     expr2 = dig_holes(expr2, plain_vars)
 
-    print(expr2)
     # Formulate the constraint for Z3.
     goal = z3.ForAll(
         list(plain_vars.values()),  # For every valuation of variables...
@@ -161,7 +206,9 @@ def synthesize(tree1, tree2):
     )
 
     # Solve the constraint.
-    return solve(goal)
+    model = solve(goal)
+    model_vals = fill_holes(expr2, model)
+    return model_vals
 
 
 
@@ -172,10 +219,10 @@ def process(source):
     tree1 = parser.parse(src1)
     tree2 = parser.parse(src2)
 
-    model = synthesize(tree1, tree2)
+    model_values = synthesize(tree1, tree2)
     print(pretty(tree1))
-    print(pretty(tree2, model_values(model)))
-    print(model)
+    print(pretty(tree2, model_values))
+    print(model_values)
 
     
 if __name__ == '__main__':
