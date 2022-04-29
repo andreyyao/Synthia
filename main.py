@@ -11,6 +11,7 @@ GRAMMAR = """
 ?start: sum
 
 ?sum: term
+  | sum "?" sum ":" sum -> if
   | sum "+" term        -> add
   | sum "-" term        -> sub
 
@@ -57,3 +58,8 @@ def interp(tree, lookup):
         return int(tree.children[0])
     elif op == 'var':
         return lookup(tree.children[0])
+    elif op == 'if':
+        cond = interp(tree.children[0], lookup)
+        true = interp(tree.children[1], lookup)
+        false = interp(tree.children[2], lookup)
+        return (cond != 0) * true + (cond == 0) * false
