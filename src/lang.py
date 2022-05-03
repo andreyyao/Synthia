@@ -32,8 +32,8 @@ GRAMMAR = """
 ?item: NUMBER           -> num
   | "-" item            -> neg
   | CNAME               -> var
-  | "~" item            -> bnot
-  | "!" item            -> lnot
+  | "~" item            -> inv
+  | "!" item            -> not
   | "(" start ")"
 
 %import common.NUMBER
@@ -95,10 +95,10 @@ def interp(tree, lookup):
         true = interp(tree.children[1], lookup)
         false = interp(tree.children[2], lookup)
         return z3.If(cond != bitvec0(), true, false)
-    elif op == 'bnot': # bitwise not
+    elif op == 'inv': # bitwise inversion
         child = interp(tree.children[0], lookup)
         return ~ child
-    elif op == 'lnot': # logical not
+    elif op == 'not': # logical not
         child = interp(tree.children[0], lookup)
         return z3.If(child == bitvec0(), bitvec1(), bitvec0())
     
